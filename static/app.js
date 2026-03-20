@@ -8,11 +8,13 @@
 // ─── State ───────────────────────────────────────────────────
 const state = {
     currentStep: 0,
+    hasClusters: false,
+    numClusters: 2,
     departments: [{ name: '', sections: 1 }],
     numDays: 5,
     numSlots: 6,
     subjects: [{ name: '', hours: 3 }],
-    teachers: [{ name: '', subjects: [] }],
+    teachers: [{ name: '', id: '', subjects: [], cluster: 1 }],
     rooms: [{ name: '', type: 'Classroom' }],
     constraints: {
         avoidTeacherClash: true,
@@ -113,6 +115,24 @@ function renderStep1(card) {
             </div>
         </div>
 
+        <div class="form-group" style="margin-top: 12px; margin-bottom: 24px;">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text-primary); font-size: 1.05rem;">
+                <input type="checkbox" id="hasClusters" ${state.hasClusters ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: var(--accent-primary);">
+                Enable Section Clusters (assign specific professors to subsets of sections)
+            </label>
+        </div>
+
+        ${state.hasClusters ? `
+        <div class="form-grid" style="animation: fadeIn 0.3s ease-out;">
+            <div class="form-group">
+                <label>Number of Clusters <span class="required">*</span></label>
+                <input type="number" class="form-input" id="numClusters" min="1" max="10"
+                    value="${state.numClusters}" placeholder="e.g. 2">
+                <small style="color: var(--text-muted); margin-top: 4px;">Sections will be divided equally.</small>
+            </div>
+        </div>
+        ` : ''}
+
         <div class="step-header" style="margin-top: 32px; margin-bottom: 16px;">
             <h2 style="font-size: 1.2rem;">Departments & Sections</h2>
             <p>Add each department and the number of sections it has.</p>
@@ -159,6 +179,19 @@ function bindStep1Events() {
     document.getElementById('numSlots').addEventListener('change', (e) => {
         state.numSlots = parseInt(e.target.value) || 6;
     });
+    const clustersToggle = document.getElementById('hasClusters');
+    if (clustersToggle) {
+        clustersToggle.addEventListener('change', (e) => {
+            state.hasClusters = e.target.checked;
+            renderStep1(document.getElementById('wizardCard'));
+        });
+    }
+    const numClustersInput = document.getElementById('numClusters');
+    if (numClustersInput) {
+        numClustersInput.addEventListener('change', (e) => {
+            state.numClusters = parseInt(e.target.value) || 2;
+        });
+    }
     document.querySelectorAll('.dept-name').forEach(el => {
         el.addEventListener('input', (e) => {
             state.departments[e.target.dataset.index].name = e.target.value;
@@ -280,16 +313,33 @@ function renderTeacherEntry(teacher, index, subjectOptions) {
         `<span class="selected-tag">${s} <span class="remove-tag" data-teacher="${index}" data-subject="${s}">×</span></span>`
     ).join('');
 
+    const clusterDropdown = state.hasClusters ? `
+        <div class="form-group">
+            <label>Assigned Cluster</label>
+            <select class="form-select teacher-cluster" data-index="${index}">
+                ${Array.from({length: state.numClusters}, (_, i) => i + 1).map(c => 
+                    `<option value="${c}" ${teacher.cluster === c ? 'selected' : ''}>Cluster ${c}</option>`
+                ).join('')}
+            </select>
+        </div>
+    ` : '';
+
     return `
         <div class="entry-card" data-index="${index}">
             <span class="entry-number">TEACHER ${index + 1}</span>
             ${state.teachers.length > 1 ? `<button class="remove-entry" onclick="removeTeacher(${index})">×</button>` : ''}
             <div class="entry-fields">
                 <div class="form-group">
+                    <label>Teacher ID</label>
+                    <input type="text" class="form-input teacher-id" data-index="${index}"
+                        value="${teacher.id || ''}" placeholder="e.g. T-101">
+                </div>
+                <div class="form-group">
                     <label>Teacher Name</label>
                     <input type="text" class="form-input teacher-name" data-index="${index}"
                         value="${teacher.name}" placeholder="e.g. Dr. Smith">
                 </div>
+                ${clusterDropdown}
                 <div class="form-group">
                     <label>Subjects</label>
                     <div class="multi-select-container" id="multiSelect-${index}">
@@ -314,9 +364,19 @@ function renderTeacherEntry(teacher, index, subjectOptions) {
 }
 
 function bindStep3Events() {
+    document.querySelectorAll('.teacher-id').forEach(el => {
+        el.addEventListener('input', (e) => {
+            state.teachers[e.target.dataset.index].id = e.target.value;
+        });
+    });
     document.querySelectorAll('.teacher-name').forEach(el => {
         el.addEventListener('input', (e) => {
             state.teachers[e.target.dataset.index].name = e.target.value;
+        });
+    });
+    document.querySelectorAll('.teacher-cluster').forEach(el => {
+        el.addEventListener('change', (e) => {
+            state.teachers[e.target.dataset.index].cluster = parseInt(e.target.value) || 1;
         });
     });
     document.querySelectorAll('.remove-tag').forEach(el => {
@@ -369,7 +429,7 @@ function toggleSubjectForTeacher(teacherIndex, subjectName) {
 }
 
 function addTeacher() {
-    state.teachers.push({ name: '', subjects: [] });
+    state.teachers.push({ name: '', id: '', subjects: [], cluster: 1 });
     renderStep3(document.getElementById('wizardCard'));
 }
 
@@ -625,11 +685,13 @@ function goBack() {
 // ─── Generate Timetable ──────────────────────────────────────
 async function generateTimetable() {
     const payload = {
+        hasClusters: state.hasClusters,
+        numClusters: state.numClusters,
         departments: state.departments.filter(d => d.name.trim()),
         numDays: state.numDays,
         numSlots: state.numSlots,
         subjects: state.subjects.filter(s => s.name.trim()),
-        teachers: state.teachers.filter(t => t.name.trim()),
+        teachers: state.teachers.filter(t => t.name.trim() || t.id.trim()),
         rooms: state.rooms.filter(r => r.name.trim()),
         constraints: state.constraints,
     };
@@ -838,6 +900,8 @@ async function saveConfiguration() {
 
     const payload = {
         name: name,
+        hasClusters: state.hasClusters,
+        numClusters: state.numClusters,
         departments: state.departments,
         numDays: state.numDays,
         numSlots: state.numSlots,
