@@ -8,8 +8,8 @@
 // ─── State ───────────────────────────────────────────────────
 const state = {
     currentStep: 0,
-    hasClusters: false,
-    numClusters: 2,
+    scheduleMode: 'class',
+    sectionsPerCluster: 2,
     departments: [{ name: '', sections: 1 }],
     numDays: 5,
     numSlots: 6,
@@ -116,19 +116,26 @@ function renderStep1(card) {
         </div>
 
         <div class="form-group" style="margin-top: 12px; margin-bottom: 24px;">
-            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text-primary); font-size: 1.05rem;">
-                <input type="checkbox" id="hasClusters" ${state.hasClusters ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: var(--accent-primary);">
-                Enable Section Clusters (assign specific professors to subsets of sections)
-            </label>
+            <label style="color: var(--text-primary); font-size: 1.05rem; display: block; margin-bottom: 10px;">Schedule Mode <span class="required">*</span></label>
+            <div style="display: flex; gap: 20px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-primary);">
+                    <input type="radio" name="scheduleMode" value="class" ${state.scheduleMode === 'class' ? 'checked' : ''} style="accent-color: var(--accent-primary); width: 18px; height: 18px;">
+                    Class-wise (Default)
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-primary);">
+                    <input type="radio" name="scheduleMode" value="cluster" ${state.scheduleMode === 'cluster' ? 'checked' : ''} style="accent-color: var(--accent-primary); width: 18px; height: 18px;">
+                    Cluster-wise
+                </label>
+            </div>
         </div>
 
-        ${state.hasClusters ? `
+        ${state.scheduleMode === 'cluster' ? `
         <div class="form-grid" style="animation: fadeIn 0.3s ease-out;">
             <div class="form-group">
-                <label>Number of Clusters <span class="required">*</span></label>
-                <input type="number" class="form-input" id="numClusters" min="1" max="10"
-                    value="${state.numClusters}" placeholder="e.g. 2">
-                <small style="color: var(--text-muted); margin-top: 4px;">Sections will be divided equally.</small>
+                <label>Sections per Cluster <span class="required">*</span></label>
+                <input type="number" class="form-input" id="sectionsPerCluster" min="1" max="20"
+                    value="${state.sectionsPerCluster}" placeholder="e.g. 5">
+                <small style="color: var(--text-muted); margin-top: 4px;">Sections will be grouped in sizes of this number.</small>
             </div>
         </div>
         ` : ''}
@@ -179,17 +186,16 @@ function bindStep1Events() {
     document.getElementById('numSlots').addEventListener('change', (e) => {
         state.numSlots = parseInt(e.target.value) || 6;
     });
-    const clustersToggle = document.getElementById('hasClusters');
-    if (clustersToggle) {
-        clustersToggle.addEventListener('change', (e) => {
-            state.hasClusters = e.target.checked;
+    document.querySelectorAll('input[name="scheduleMode"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            state.scheduleMode = e.target.value;
             renderStep1(document.getElementById('wizardCard'));
         });
-    }
-    const numClustersInput = document.getElementById('numClusters');
-    if (numClustersInput) {
-        numClustersInput.addEventListener('change', (e) => {
-            state.numClusters = parseInt(e.target.value) || 2;
+    });
+    const spcInput = document.getElementById('sectionsPerCluster');
+    if (spcInput) {
+        spcInput.addEventListener('change', (e) => {
+            state.sectionsPerCluster = parseInt(e.target.value) || 2;
         });
     }
     document.querySelectorAll('.dept-name').forEach(el => {
@@ -313,11 +319,17 @@ function renderTeacherEntry(teacher, index, subjectOptions) {
         `<span class="selected-tag">${s} <span class="remove-tag" data-teacher="${index}" data-subject="${s}">×</span></span>`
     ).join('');
 
-    const clusterDropdown = state.hasClusters ? `
+    let computedNumClusters = 1;
+    if (state.scheduleMode === 'cluster') {
+        const totalSections = state.departments.reduce((sum, d) => sum + (parseInt(d.sections) || 1), 0);
+        computedNumClusters = Math.ceil(totalSections / state.sectionsPerCluster) || 1;
+    }
+
+    const clusterDropdown = state.scheduleMode === 'cluster' ? `
         <div class="form-group">
             <label>Assigned Cluster</label>
             <select class="form-select teacher-cluster" data-index="${index}">
-                ${Array.from({length: state.numClusters}, (_, i) => i + 1).map(c => 
+                ${Array.from({length: computedNumClusters}, (_, i) => i + 1).map(c => 
                     `<option value="${c}" ${teacher.cluster === c ? 'selected' : ''}>Cluster ${c}</option>`
                 ).join('')}
             </select>
@@ -685,8 +697,8 @@ function goBack() {
 // ─── Generate Timetable ──────────────────────────────────────
 async function generateTimetable() {
     const payload = {
-        hasClusters: state.hasClusters,
-        numClusters: state.numClusters,
+        scheduleMode: state.scheduleMode,
+        sectionsPerCluster: state.sectionsPerCluster,
         departments: state.departments.filter(d => d.name.trim()),
         numDays: state.numDays,
         numSlots: state.numSlots,
@@ -900,8 +912,8 @@ async function saveConfiguration() {
 
     const payload = {
         name: name,
-        hasClusters: state.hasClusters,
-        numClusters: state.numClusters,
+        scheduleMode: state.scheduleMode,
+        sectionsPerCluster: state.sectionsPerCluster,
         departments: state.departments,
         numDays: state.numDays,
         numSlots: state.numSlots,
