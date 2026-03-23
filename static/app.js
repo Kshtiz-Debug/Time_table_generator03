@@ -40,7 +40,28 @@ const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satu
 document.addEventListener('DOMContentLoaded', () => {
     renderStepper();
     renderStep();
+    sendAnalyticsEvent('pageview', { path: window.location.pathname });
 });
+
+// ─── Analytics helper ─────────────────────────────────────────
+function sendAnalyticsEvent(eventName, eventData = {}) {
+    if (typeof window === 'undefined') return;
+
+    // Vercel Analytics normal flow
+    if (window.va && typeof window.va === 'function') {
+        window.va('event', eventName, eventData);
+    }
+
+    // Fallback queue if analytics script is not yet loaded
+    if (window.vaq && Array.isArray(window.vaq)) {
+        window.vaq.push(['event', eventName, eventData]);
+    }
+
+    // console for debugging during local development
+    if (window.location.hostname === 'localhost') {
+        console.debug('Analytics event:', eventName, eventData);
+    }
+}
 
 // ─── Stepper ─────────────────────────────────────────────────
 function renderStepper() {
@@ -682,6 +703,7 @@ function goNext() {
         renderStepper();
         renderStep();
         window.scrollTo({ top: 0, behavior: 'smooth' });
+        sendAnalyticsEvent('step_next', { step: state.currentStep });
     }
 }
 
@@ -691,6 +713,7 @@ function goBack() {
         renderStepper();
         renderStep();
         window.scrollTo({ top: 0, behavior: 'smooth' });
+        sendAnalyticsEvent('step_back', { step: state.currentStep });
     }
 }
 
@@ -727,6 +750,15 @@ async function generateTimetable() {
         state.results = result;
         showResults(result);
         showToast('Timetable generated successfully!', 'success');
+        sendAnalyticsEvent('timetable_generated', {
+            departments: state.departments.length,
+            subjects: state.subjects.length,
+            teachers: state.teachers.length,
+            rooms: state.rooms.length,
+            numDays: state.numDays,
+            numSlots: state.numSlots,
+            scheduleMode: state.scheduleMode
+        });
     } catch (error) {
         showToast('Error: ' + error.message, 'error');
     } finally {
