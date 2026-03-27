@@ -1437,6 +1437,77 @@ body {
     display: none !important;
 }
 
+.lab-dnd-layout {
+    display: grid;
+    grid-template-columns: minmax(260px, 320px) 1fr;
+    gap: 16px;
+    margin-top: 12px;
+}
+
+.lab-dnd-layout .entry-card {
+    min-width: 0; /* allow inner scroll containers to work */
+}
+
+.lab-drop-table {
+    width: max-content; /* force horizontal overflow for many slots */
+}
+
+.lab-drop-table th,
+.lab-drop-table td {
+    min-width: 140px;
+}
+
+.lab-block-pool {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.lab-block {
+    border: 1px solid var(--accent-primary);
+    background: var(--accent-glow);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    cursor: grab;
+    user-select: none;
+}
+
+.lab-block.assigned {
+    border-color: var(--accent-secondary);
+    background: rgba(139, 92, 246, 0.15);
+}
+
+.lab-grid-cell {
+    height: 56px;
+}
+
+.lab-drop-cell {
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+    border: 1px dashed var(--border);
+}
+
+.lab-drop-cell.valid-drop {
+    background: rgba(34, 197, 94, 0.2) !important;
+    border-color: var(--success);
+}
+
+.lab-drop-cell.invalid-drop {
+    background: rgba(239, 68, 68, 0.2) !important;
+    border-color: var(--danger);
+}
+
+.lab-occupied {
+    background: rgba(139, 92, 246, 0.2);
+    border-left: 3px solid var(--accent-secondary) !important;
+    font-weight: 600;
+}
+
+.lab-occupied-cont {
+    background: rgba(139, 92, 246, 0.08);
+}
+
 /* PDF Export Styles (Print) */
 @media print {
     body {

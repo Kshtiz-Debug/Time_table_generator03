@@ -20,6 +20,10 @@ class TimetableGenerator:
         self.rooms: List[Dict[str, Any]] = data.get('rooms', [])
         self.constraints: Dict[str, Any] = data.get('constraints', {})
         self.lunch_slot: Optional[int] = int(self.num_slots // 2) if self.constraints.get('fixedLunch', False) else None
+        
+        # New constraints
+        self.enforce_first_period: bool = self.constraints.get('enforceFirstPeriod', False)
+        self.max_consecutive_classes: int = int(self.constraints.get('maxConsecutiveClasses', 3))
 
         # Build helper maps
         self.subject_map: Dict[str, Dict[str, Any]] = {str(s.get('name', '')): s for s in self.subjects}
@@ -99,12 +103,13 @@ class TimetableGenerator:
 
         random.shuffle(assignments)
 
+        # Try to place each assignment with backtracking (time-limited)
         attempt_counter = [0]
         start_time = time.time()
         print(f"  Attempting backtrack for {section_id} ({len(assignments)} assignments)...")
         success = self._backtrack_fill(
             grid, assignments, 0, section_id, teacher_schedule, room_schedule,
-            max_attempts=5000, attempt_counter=attempt_counter, start_time=start_time, time_limit=5.0
+            max_attempts=10000, attempt_counter=attempt_counter, start_time=start_time, time_limit=10.0
         )
         print(f"  Backtrack {'succeeded' if success else 'failed'} after {attempt_counter[0]} attempts, {time.time()-start_time:.2f}s")
 
@@ -132,6 +137,11 @@ class TimetableGenerator:
 
     def _backtrack_fill(self, grid, assignments, idx, section_id, teacher_schedule, room_schedule, max_attempts=5000, attempt_counter=None, start_time=None, time_limit=5.0):
         if idx >= len(assignments):
+            # Final Check: First period must not be empty if enforced
+            if self.enforce_first_period:
+                for d in range(self.num_days):
+                    if grid[d][0] is None:
+                        return False
             return True
 
         if attempt_counter is not None:
@@ -146,11 +156,25 @@ class TimetableGenerator:
         subject_name = assignment['subject']
         is_lab = assignment['is_lab']
 
+        # Heuristic: If enforcing first period, try slot 0 first
         positions = []
+        first_slots = []
+        other_slots = []
         for d in range(self.num_days):
             for s in range(self.num_slots):
-                positions.append((d, s))
-        random.shuffle(positions)
+                if s == 0:
+                    first_slots.append((d, s))
+                else:
+                    other_slots.append((d, s))
+        
+        random.shuffle(first_slots)
+        random.shuffle(other_slots)
+        
+        if self.enforce_first_period:
+            positions = first_slots + other_slots
+        else:
+            positions = first_slots + other_slots
+            random.shuffle(positions)
 
         for (d, s) in positions:
             if grid[d][s] is not None:
@@ -184,6 +208,35 @@ class TimetableGenerator:
                     if is_lab and self.constraints.get('labConsecutive', False):
                         if t_name in teacher_schedule and (d, s + 1) in teacher_schedule[t_name]:
                             continue
+                    
+                # New Constraint: Professor Breaks (Consecutive classes limit)
+                if self.constraints.get('teacherBreaks', False):
+                    # Check consecutive classes if this slot was assigned to this teacher
+                    consecutive = 1
+                    # Check backward
+                    curr_s = s - 1
+                    while curr_s >= 0:
+                        if t_name in teacher_schedule and (d, curr_s) in teacher_schedule[t_name]:
+                            consecutive += 1
+                        elif grid[d][curr_s] is not None and grid[d][curr_s]['teacher'] == t_name:
+                            consecutive += 1
+                        else:
+                            break
+                        curr_s -= 1
+                    # Check forward
+                    curr_s = s + 1
+                    while curr_s < self.num_slots:
+                        if t_name in teacher_schedule and (d, curr_s) in teacher_schedule[t_name]:
+                            consecutive += 1
+                        elif grid[d][curr_s] is not None and grid[d][curr_s]['teacher'] == t_name:
+                            consecutive += 1
+                        else:
+                            break
+                        curr_s += 1
+                    
+                    if consecutive > self.max_consecutive_classes:
+                        continue
+
                 teacher_found = t_name
                 break
 
@@ -248,10 +301,19 @@ class TimetableGenerator:
             is_lab = assignment['is_lab']
             placed = False
 
-            for d in range(self.num_days):
+            # Heuristic for greedy: try to fill slot 0 first if enforced
+            search_slots = []
+            if self.enforce_first_period:
+                for d in range(self.num_days): search_slots.append((d, 0))
+                for d in range(self.num_days):
+                    for s in range(1, self.num_slots): search_slots.append((d, s))
+            else:
+                for d in range(self.num_days):
+                    for s in range(self.num_slots): search_slots.append((d, s))
+
+            for d, s in search_slots:
                 if placed:
                     break
-                for s in range(self.num_slots):
                     if grid[d][s] is not None:
                         continue
                     if self.lunch_slot is not None and s == self.lunch_slot:
@@ -327,11 +389,10 @@ if __name__ == '__main__':
         'sectionsPerCluster': 2,
         'departments': [{'name': 'CS', 'sections': 1}],
         'numDays': 5,
-        'numSlots': 6,
-        'subjects': [{'name': 'Math', 'hours': 3}, {'name': 'Physics', 'hours': 2}],
+        'numSlots': 8,
+        'subjects': [{'name': 'Math', 'hours': 15}],
         'teachers': [
             {'name': 'Dr Smith', 'id': 'T1', 'subjects': ['Math'], 'cluster': 1},
-            {'name': 'Dr Jones', 'id': 'T2', 'subjects': ['Physics'], 'cluster': 1}
         ],
         'rooms': [{'name': 'Room 101', 'type': 'Classroom'}],
         'constraints': {
@@ -339,10 +400,13 @@ if __name__ == '__main__':
             'avoidRoomClash': True,
             'fixedLunch': True,
             'labConsecutive': False,
+            'enforceFirstPeriod': True,
+            'teacherBreaks': True,
+            'maxConsecutiveClasses': 2,
         },
     }
 
-    print('Test: Simple case...')
+    print('Test: Moderate consecutive limit (max 2)...')
     start = time.time()
     gen = TimetableGenerator(data)
     result = gen.generate()
